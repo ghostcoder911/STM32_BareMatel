@@ -1,7 +1,11 @@
-# STM32F103 Bare-Metal Custom Header (No CMSIS / No HAL)
+# STM32 Bare-Metal Custom Headers (No CMSIS / No HAL)
 
-This repository contains a **fully custom header file** for the STM32F103 microcontroller family.  
+This repository contains **fully custom header files** for STM32 microcontroller families.  
 It is written from scratch for **pure register-level programming** — without using STM32 HAL or CMSIS.
+
+**Supported Boards:**
+- STM32F103 (Original implementation)
+- **STM32F446RE Nucleo Board** (Current implementation)
 
 This project is ideal for:
 - Learning bare-metal embedded systems
@@ -20,13 +24,17 @@ GPIO, RCC, and all memory-mapped registers are defined manually.
 Zero dependency — ideal for understanding ARM Cortex-M at low level.
 
 ### ✔ Supports multiple GPIO ports  
-GPIOA, GPIOB, GPIOC, GPIOD, GPIOE.
+GPIOA through GPIOH (depending on MCU variant).
 
 ### ✔ Clock enable macros  
 Simple one-line macros to enable peripheral clocks.
 
 ### ✔ Example main program  
-LED blinking using direct register access.
+LED blinking on STM32F446RE Nucleo board (PA5 - LD2) using direct register access.
+
+### ✔ Multiple MCU support
+- `stm32f103xx.h` - For STM32F103 series (Cortex-M3)
+- `stm32f446xx.h` - For STM32F446 series (Cortex-M4)
 
 ---
 
@@ -36,21 +44,30 @@ LED blinking using direct register access.
 STM32F103-BareMetal-Custom-Header/
 │
 ├── src/
-│   └── main.c
+│   └── main.c              (Currently configured for STM32F446RE)
 │
 ├── inc/
-│   └── stm32f103xx.h
+│   ├── stm32f103xx.h       (Header for STM32F103)
+│   └── stm32f446xx.h       (Header for STM32F446RE)
 │
 └── README.md
 ```
 
 ---
 
-# 📄 stm32f103xx.h (Custom Header)
+# 📄 Custom Headers
 
+## stm32f103xx.h (STM32F103)
 Located at: `inc/stm32f103xx.h`
 
-This file includes:
+For STM32F103 (Cortex-M3) with CRL/CRH GPIO configuration style.
+
+## stm32f446xx.h (STM32F446RE - Current)
+Located at: `inc/stm32f446xx.h`
+
+For STM32F446 (Cortex-M4) with MODER/OTYPER/OSPEEDR GPIO configuration style.
+
+Both files include:
 - GPIO register struct  
 - RCC register struct  
 - Base addresses  
@@ -61,34 +78,35 @@ The goal is **clean, readable bare-metal code**.
 
 ---
 
-# 💡 Example: LED Toggle on PA1
+# 💡 Example: LED Blink on STM32F446RE Nucleo
 
 Located in: `src/main.c`
 
-```c
-#include "stm32f103xx.h"
+**Onboard LED (LD2)** on Nucleo-F446RE is connected to **PA5**.
 
-void delay_ms(int t)
-{
-    for (int i = 0; i < t * 8000; i++)
-        __asm__("nop");
+```c
+#include "stm32f446xx.h"
+
+void delay(int t){
+    for (int i = t * 8000; i > 0; i--);
 }
 
 int main(void)
 {
+    // Enable GPIOA clock
     GPIOA_CLK_EN();
-
-    // PA1 -> Output push-pull (2 MHz)
-    GPIOA->CRL &= ~(0xF << (1 * 4));
-    GPIOA->CRL |=  (0x2 << (1 * 4));
-
-    while (1)
-    {
-        GPIOA->BSRR = (1 << 1);     // Set PA1
-        delay_ms(300);
-
-        GPIOA->BRR = (1 << 1);      // Reset PA1
-        delay_ms(300);
+    
+    // Configure PA5 as output (onboard LED LD2)
+    GPIOA->MODER &= ~(0x3 << (5 * 2));  // Clear mode bits
+    GPIOA->MODER |= (0x1 << (5 * 2));   // Set as output
+    
+    GPIOA->OTYPER &= ~(1 << 5);         // Push-pull
+    GPIOA->OSPEEDR |= (0x1 << (5 * 2)); // Medium speed
+    GPIOA->PUPDR &= ~(0x3 << (5 * 2));  // No pull-up/down
+    
+    while(1){
+        GPIOA->ODR ^= (1 << 5);         // Toggle LED
+        delay(200);
     }
 }
 ```
@@ -99,13 +117,23 @@ int main(void)
 
 Use any ARM GCC toolchain.
 
+**For STM32F446RE (Cortex-M4):**
+```bash
+arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 \
+    src/main.c -Iinc -o main.elf
+
+arm-none-eabi-objcopy -O binary main.elf main.bin
 ```
-arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb src/main.c -Iinc -o main.o
+
+**For STM32F103 (Cortex-M3):**
+```bash
+arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb src/main.c -Iinc -o main.elf
+arm-none-eabi-objcopy -O binary main.elf main.bin
 ```
 
 Flash with ST-Link:
 
-```
+```bash
 st-flash write main.bin 0x08000000
 ```
 
